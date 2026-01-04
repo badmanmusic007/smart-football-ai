@@ -8,7 +8,7 @@ class MatchPredictor:
     def __init__(self):
         # Optimized Hyperparameters from Tuning (Phase 18)
         params = {
-            'n_estimators': 200,
+            'n_estimators': 100,
             'learning_rate': 0.01,
             'max_depth': 5,
             'subsample': 0.9,

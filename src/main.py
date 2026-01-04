@@ -26,14 +26,22 @@ data_loader = FootballDataLoader()
 feature_engineer = FeatureEngineer()
 predictor = MatchPredictor()
 
+# Global status tracker
+training_status = {"state": "idle", "error": None}
+
 def run_background_training():
     """Runs training in a separate thread to avoid blocking startup."""
+    global training_status
+    training_status["state"] = "training"
     try:
         logger.info("Starting background training...")
         train_model.train_real_model()
         predictor.load_model()
+        training_status["state"] = "completed"
         logger.info("Background training complete. Model loaded.")
     except Exception as e:
+        training_status["state"] = "failed"
+        training_status["error"] = str(e)
         logger.error(f"Background training failed: {e}")
 
 @app.on_event("startup")
@@ -742,8 +750,11 @@ async def get_available_teams():
 
 @app.get("/predict")
 async def predict_api(home: str, away: str):
+    if training_status["state"] == "failed":
+        raise HTTPException(status_code=500, detail=f"Model training failed: {training_status['error']}")
+        
     if not predictor.is_trained:
-        raise HTTPException(status_code=503, detail="Model is still training. Please try again in a minute.")
+        raise HTTPException(status_code=503, detail="Model is still training (approx 2 mins). Please refresh shortly.")
 
     # 1. Load Data
     df = data_loader.load_data()
@@ -891,8 +902,11 @@ async def scan_market():
     """
     Scans upcoming fixtures and returns high-confidence predictions.
     """
+    if training_status["state"] == "failed":
+        return {"picks": [], "acca": None, "message": f"System Error: {training_status['error']}"}
+        
     if not predictor.is_trained:
-        return {"picks": [], "acca": None, "message": "Model is still training. Please try again in a minute."}
+        return {"picks": [], "acca": None, "message": "Model is still training (approx 2 mins). Please try again shortly."}
 
     df = data_loader.load_data()
     if df.empty: return {"picks": [], "acca": None, "message": "Data could not be loaded."}
