@@ -655,6 +655,12 @@ async def root():
                 try {
                     const response = await fetch('/scan');
                     const data = await response.json();
+
+                    if (data.message) {
+                        resultDiv.innerHTML = `<h2>🔍 Top Value Picks</h2><p style='color:#666; font-style:italic;'>${data.message}</p>`;
+                        return;
+                    }
+
                     const picks = data.picks;
                     const acca = data.acca;
                     
@@ -736,6 +742,9 @@ async def get_available_teams():
 
 @app.get("/predict")
 async def predict_api(home: str, away: str):
+    if not predictor.is_trained:
+        raise HTTPException(status_code=503, detail="Model is still training. Please try again in a minute.")
+
     # 1. Load Data
     df = data_loader.load_data()
     if df.empty:
@@ -882,8 +891,11 @@ async def scan_market():
     """
     Scans upcoming fixtures and returns high-confidence predictions.
     """
+    if not predictor.is_trained:
+        return {"picks": [], "acca": None, "message": "Model is still training. Please try again in a minute."}
+
     df = data_loader.load_data()
-    if df.empty: return {"picks": [], "acca": None}
+    if df.empty: return {"picks": [], "acca": None, "message": "Data could not be loaded."}
     
     # Filter for upcoming matches (where FTHG is NaN)
     today = pd.Timestamp.now().normalize()
@@ -904,7 +916,9 @@ async def scan_market():
         home_elo = elo_dict[home]
         away_elo = elo_dict[away]
         
-        features = feature_engineer.prepare_features(df_hist, home, away, row['Date'], home_elo, away_elo)
+        # FIX: Ensure we only use data from before the match to calculate features
+        historical_data_for_match = df_hist[df_hist['Date'] < row['Date']]
+        features = feature_engineer.prepare_features(historical_data_for_match, home, away, row['Date'], home_elo, away_elo)
         pred = predictor.predict(features)
         
         # Check for high confidence (>65%)
