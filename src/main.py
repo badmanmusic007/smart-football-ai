@@ -308,7 +308,7 @@ async def root():
             .container { background: white; padding: 30px; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); text-align: center; }
 
             /* Input Styles */
-            .selectors { display: flex; gap: 15px; justify-content: center; margin-bottom: 25px; }
+            .selectors { display: flex; gap: 15px; justify-content: center; margin-bottom: 25px; align-items: center; }
             .team-input { padding: 12px; border-radius: 8px; border: 1px solid #ddd; width: 220px; font-size: 16px; }
             .swap-btn { background: none; border: none; font-size: 1.5em; cursor: pointer; color: #666; padding: 0 10px; transition: transform 0.2s; }
             .swap-btn:hover { color: #1a73e8; transform: scale(1.1); }
@@ -394,7 +394,14 @@ async def root():
 
             /* History Grid */
             .history-container { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
-            @media (max-width: 600px) { .history-container { grid-template-columns: 1fr; } }
+            @media (max-width: 600px) { 
+                .history-container { grid-template-columns: 1fr; }
+                .selectors { flex-direction: column; gap: 10px; }
+                .team-input { width: 100%; }
+                .swap-btn { transform: rotate(90deg); margin: 5px 0; }
+                .container { padding: 20px; }
+                body { padding: 10px; }
+            }
 
             /* Scanner Styles */
             .scan-btn { background: #6f42c1; color: white; border: none; padding: 12px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; width: 100%; margin-top: 10px; transition: 0.3s; }
