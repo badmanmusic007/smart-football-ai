@@ -7,4 +7,3 @@ __pycache__
 # Ignore downloaded data and generated reports (they are regenerated on server)
 data/*.csv
 data/*.png
-models/*.pkl

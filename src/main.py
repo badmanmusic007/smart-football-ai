@@ -29,6 +29,7 @@ predictor = MatchPredictor()
 # Global status tracker
 training_status = {"state": "idle", "error": None}
 
+
 def run_background_training():
     """Runs training in a separate thread to avoid blocking startup."""
     global training_status
@@ -44,12 +45,16 @@ def run_background_training():
         training_status["error"] = str(e)
         logger.error(f"Background training failed: {e}")
 
+
 @app.on_event("startup")
 async def startup_event():
     if not predictor.is_trained:
         logger.info("Model not found. Initiating background training...")
         thread = threading.Thread(target=run_background_training)
         thread.start()
+    else:
+        logger.info("Pre-trained model found. AI is ready immediately.")
+
 
 # --- Rivalry Logic Database ---
 RIVALRIES = {
@@ -82,24 +87,25 @@ LEAGUE_NAMES = {
     'SC0': 'Premiership'
 }
 
+
 def get_recent_matches(df, team, n=5):
     """Get the last n matches for a specific team."""
     mask = (df['HomeTeam'] == team) | (df['AwayTeam'] == team)
     recent = df[mask].tail(n).iloc[::-1]
-    
+
     history = []
     for _, row in recent.iterrows():
         if row['FTR'] == 'D':
             res = 'D'
         elif (row['HomeTeam'] == team and row['FTR'] == 'H') or \
-             (row['AwayTeam'] == team and row['FTR'] == 'A'):
+                (row['AwayTeam'] == team and row['FTR'] == 'A'):
             res = 'W'
         else:
             res = 'L'
-            
+
         opponent = row['AwayTeam'] if row['HomeTeam'] == team else row['HomeTeam']
         score = f"{int(row['FTHG'])}-{int(row['FTAG'])}"
-        
+
         history.append({
             "date": row['Date'].strftime("%d/%m"),
             "opponent": opponent,
@@ -108,19 +114,20 @@ def get_recent_matches(df, team, n=5):
         })
     return history
 
+
 def get_h2h_history(df, team1, team2, n=5):
     """Get the last n head-to-head matches."""
     mask = ((df['HomeTeam'] == team1) & (df['AwayTeam'] == team2)) | \
            ((df['HomeTeam'] == team2) & (df['AwayTeam'] == team1))
     recent = df[mask].tail(n).iloc[::-1]
-    
+
     history = []
     for _, row in recent.iterrows():
         # Determine result relative to team1
         if row['FTR'] == 'D':
             res = 'D'
         elif (row['HomeTeam'] == team1 and row['FTR'] == 'H') or \
-             (row['AwayTeam'] == team1 and row['FTR'] == 'A'):
+                (row['AwayTeam'] == team1 and row['FTR'] == 'A'):
             res = 'W'
         else:
             res = 'L'
@@ -135,6 +142,7 @@ def get_h2h_history(df, team1, team2, n=5):
         })
     return history
 
+
 def get_standings(df, division):
     """
     Calculate league table for the current season (2025/2026) for a specific division.
@@ -142,39 +150,47 @@ def get_standings(df, division):
     # Filter for current season (approximate start date July 2025)
     season_start = pd.Timestamp("2025-07-01")
     season_df = df[(df['Div'] == division) & (df['Date'] > season_start)]
-    
+
     teams = {}
     for _, row in season_df.iterrows():
         h, a = row['HomeTeam'], row['AwayTeam']
         hg, ag = row['FTHG'], row['FTAG']
         res = row['FTR']
-        
-        if h not in teams: teams[h] = {'P':0, 'W':0, 'D':0, 'L':0, 'GF':0, 'GA':0, 'Pts':0}
-        if a not in teams: teams[a] = {'P':0, 'W':0, 'D':0, 'L':0, 'GF':0, 'GA':0, 'Pts':0}
-        
-        teams[h]['P'] += 1; teams[a]['P'] += 1
-        teams[h]['GF'] += hg; teams[h]['GA'] += ag
-        teams[a]['GF'] += ag; teams[a]['GA'] += hg
-        
+
+        if h not in teams: teams[h] = {'P': 0, 'W': 0, 'D': 0, 'L': 0, 'GF': 0, 'GA': 0, 'Pts': 0}
+        if a not in teams: teams[a] = {'P': 0, 'W': 0, 'D': 0, 'L': 0, 'GF': 0, 'GA': 0, 'Pts': 0}
+
+        teams[h]['P'] += 1;
+        teams[a]['P'] += 1
+        teams[h]['GF'] += hg;
+        teams[h]['GA'] += ag
+        teams[a]['GF'] += ag;
+        teams[a]['GA'] += hg
+
         if res == 'H':
-            teams[h]['W'] += 1; teams[h]['Pts'] += 3
+            teams[h]['W'] += 1;
+            teams[h]['Pts'] += 3
             teams[a]['L'] += 1
         elif res == 'A':
-            teams[a]['W'] += 1; teams[a]['Pts'] += 3
+            teams[a]['W'] += 1;
+            teams[a]['Pts'] += 3
             teams[h]['L'] += 1
         else:
-            teams[h]['D'] += 1; teams[h]['Pts'] += 1
-            teams[a]['D'] += 1; teams[a]['Pts'] += 1
-            
+            teams[h]['D'] += 1;
+            teams[h]['Pts'] += 1
+            teams[a]['D'] += 1;
+            teams[a]['Pts'] += 1
+
     standings = []
     for team, stats in teams.items():
         stats['Team'] = team
         stats['GD'] = stats['GF'] - stats['GA']
         standings.append(stats)
-        
+
     # Sort by Pts (desc), GD (desc), GF (desc)
     standings.sort(key=lambda x: (x['Pts'], x['GD'], x['GF']), reverse=True)
     return standings
+
 
 def get_matches_against_similar_elo(df, team_name, target_elo, n=5):
     """
@@ -183,7 +199,7 @@ def get_matches_against_similar_elo(df, team_name, target_elo, n=5):
     # Filter for matches involving the team
     mask = ((df['HomeTeam'] == team_name) | (df['AwayTeam'] == team_name)) & df['FTR'].notna()
     team_matches = df[mask].copy()
-    
+
     if team_matches.empty:
         return []
 
@@ -193,27 +209,27 @@ def get_matches_against_similar_elo(df, team_name, target_elo, n=5):
         team_matches['AwayElo'],
         team_matches['HomeElo']
     )
-    
+
     # Calculate difference from target ELO
     team_matches['EloDiff'] = abs(team_matches['OpponentElo'] - target_elo)
-    
+
     # Sort by EloDiff (closest strength) then Date (most recent)
     similar = team_matches.sort_values(['EloDiff', 'Date'], ascending=[True, False]).head(n)
-    
+
     history = []
     for _, row in similar.iterrows():
         # Determine result for the specific team
         if row['FTR'] == 'D':
             res = 'D'
         elif (row['HomeTeam'] == team_name and row['FTR'] == 'H') or \
-             (row['AwayTeam'] == team_name and row['FTR'] == 'A'):
+                (row['AwayTeam'] == team_name and row['FTR'] == 'A'):
             res = 'W'
         else:
             res = 'L'
-        
+
         score = f"{int(row['FTHG'])}-{int(row['FTAG'])}"
         opponent = row['AwayTeam'] if row['HomeTeam'] == team_name else row['HomeTeam']
-        
+
         history.append({
             "date": row['Date'].strftime("%d/%m/%y"),
             "opponent": opponent,
@@ -222,6 +238,7 @@ def get_matches_against_similar_elo(df, team_name, target_elo, n=5):
             "result": res
         })
     return history
+
 
 def get_rivalry_info(home, away):
     pair = tuple(sorted([home, away]))
@@ -333,7 +350,7 @@ async def root():
             /* History Grid */
             .history-container { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
             @media (max-width: 600px) { .history-container { grid-template-columns: 1fr; } }
-            
+
             /* Scanner Styles */
             .scan-btn { background: #6f42c1; color: white; border: none; padding: 12px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; width: 100%; margin-top: 10px; transition: 0.3s; }
             .scan-btn:hover { background: #5a32a3; }
@@ -354,7 +371,7 @@ async def root():
             <button class="scan-btn" onclick="scanMarket()">🔍 Scan for Value Bets (Next 7 Days)</button>
 
             <div id="result"></div>
-            
+
             <div style="margin-top: 40px; border-top: 1px solid #eee; padding-top: 20px; text-align: center;">
                 <h3 style="color:#555;">Backtesting Reports</h3>
                 <button onclick="showReport('match_winner')" style="background:#6c757d; margin-right:10px; width:auto; padding: 10px 20px; color:white; border:none; border-radius:5px; cursor:pointer;">Match Winner ROI</button>
@@ -402,22 +419,22 @@ async def root():
                     content.style.maxHeight = content.scrollHeight + "px";
                 }
             }
-            
+
             function renderTeamStanding(standings, teamName, leagueName) {
                 const team = standings.find(t => t.Team === teamName);
                 if (!team) return '<div class="stat-box" style="margin-bottom:15px; color:#999;">No League Data</div>';
-                
+
                 const rank = standings.indexOf(team) + 1;
                 let rankColor = "#666";
                 if (rank <= 4) rankColor = "#1a73e8"; // Top 4
                 if (rank >= standings.length - 3) rankColor = "#ea4335"; // Relegation
-                
+
                 // Fatigue Badge
                 let fatigueHTML = '';
                 if (team.RestDays <= 3) {
                     fatigueHTML = '<span style="background:#fff3cd; color:#856404; font-size:0.7em; padding:2px 6px; border-radius:4px; margin-left:5px;">⚠️ Tired</span>';
                 }
-                
+
                 return `
                     <div class="stat-box" style="margin-bottom: 15px; text-align: left; border-left: 4px solid ${rankColor}; background: #fff; padding:10px; border-radius:4px; border:1px solid #eee;">
                         <div style="font-size: 0.75em; color: #888; text-transform: uppercase; letter-spacing: 0.5px;">${leagueName} Position</div>
@@ -441,7 +458,7 @@ async def root():
                 const resultDiv = document.getElementById('result');
 
                 if(!home || !away) return alert("Select both teams");
-                
+
                 if (window.allTeams && !window.allTeams.includes(home)) {
                     alert(`Team '${home}' not found. Please select from the list.`);
                     return;
@@ -457,7 +474,7 @@ async def root():
                 try {
                     const response = await fetch(`/predict?home=${encodeURIComponent(home)}&away=${encodeURIComponent(away)}`);
                     const data = await response.json();
-                    
+
                     if (response.status !== 200) {
                         resultDiv.innerHTML = `<div style="color:red">Error: ${data.detail}</div>`;
                         return;
@@ -468,7 +485,7 @@ async def root():
                             🔥 ${data.rivalry.name} <br>
                             <span style="font-size:0.85em; font-weight:normal;">${data.rivalry.impact}</span>
                         </div>` : '';
-                        
+
                     // Best Bet Logic
                     let bestBetHTML = '';
                     if (data.recommendation) {
@@ -485,7 +502,7 @@ async def root():
                             </div>
                         `;
                     }
-                    
+
                     // Goal Markets Table
                     const odds = data.fair_odds;
                     const pred = data.prediction;
@@ -500,7 +517,7 @@ async def root():
                             </tr>
                         `;
                     };
-                    
+
                     const over15 = (pred.over_15_prob * 100).toFixed(1);
                     const over25 = (pred.over_25_prob * 100).toFixed(1);
                     const over35 = (pred.over_35_prob * 100).toFixed(1);
@@ -509,10 +526,10 @@ async def root():
                     const cardsOver = (pred.cards_over_prob * 100).toFixed(1);
                     const cornersOdds = odds.corners_over;
                     const cardsOdds = odds.cards_over;
-                    
+
                     const goalsHTML = `
                         <div style="margin-top: 20px; text-align: left;">
-                            
+
                             <h4 style="margin: 0 0 10px 0; color: #555; border-bottom: 2px solid #eee; padding-bottom: 5px;">⚽ Goals</h4>
                             <table style="width: 100%; border-collapse: collapse; font-size: 0.9em; margin-bottom: 20px;">
                                 <thead>
@@ -567,14 +584,14 @@ async def root():
                             <span>vs ${m.opponent} <b>${m.score}</b></span>
                         </div>`
                     ).join('');
-                    
+
                     const renderH2H = (matches) => matches.map(m =>
                         `<div class="match-row">
                             <span>${m.date}</span>
                             <span>${m.home} <b>${m.score}</b> ${m.away}</span>
                         </div>`
                     ).join('');
-                    
+
                     const renderSimilarSplit = (homeMatches, awayMatches, homeName, awayName) => {
                         const renderList = (matches, title) => {
                             let h = `<div style="background:white; padding:10px; border-radius:8px; border:1px solid #eee; height: 100%;">`;
@@ -603,7 +620,7 @@ async def root():
                     <div class="animate-in">
                         ${rivalryHTML}
                         ${bestBetHTML}
-                        
+
                         <h2>Match Outcome Probability</h2>
                         <div class="prob-grid">
                             <div class="prob-box"><div>🏠 ${home}</div><strong>${data.home_win}%</strong></div>
@@ -629,7 +646,7 @@ async def root():
 
                         <button class="collapsible" onclick="toggleCollapsible(this)">📈 Over/Under Markets</button>
                         <div class="content">${goalsHTML}</div>
-                        
+
                         <button class="collapsible" onclick="toggleCollapsible(this)">⚔️ Head-to-Head</button>
                         <div class="content" style="padding-top:15px;">${data.h2h.length ? renderH2H(data.h2h) : 'No recent history found.'}</div>
 
@@ -657,12 +674,12 @@ async def root():
                     resultDiv.innerHTML = `<div style="color:red">Connection Error: ${e}</div>`;
                 }
             }
-            
+
             async function scanMarket() {
                 const resultDiv = document.getElementById('result');
                 resultDiv.style.display = 'block';
                 resultDiv.innerHTML = "Scanning upcoming matches for value... (This may take a few seconds)";
-                
+
                 try {
                     const response = await fetch('/scan');
                     const data = await response.json();
@@ -674,10 +691,10 @@ async def root():
 
                     const picks = data.picks;
                     const acca = data.acca;
-                    
+
                     let html = '<h2>🔍 Top Value Picks</h2>';
                     if (picks.length === 0) html += '<p>No high-confidence bets found for the next 7 days.</p>';
-                    
+
                     picks.forEach(pick => {
                         html += `<div style="background:white; padding:15px; border-radius:8px; border-left:5px solid #6f42c1; margin-bottom:10px; box-shadow:0 2px 5px rgba(0,0,0,0.05); text-align:left;">
                             <div style="font-size:0.9em; color:#666;">${pick.date} • ${pick.league}</div>
@@ -688,7 +705,7 @@ async def root():
                             </div>
                         </div>`;
                     });
-                    
+
                     // Accumulator HTML
                     let accaHTML = '';
                     if (acca && acca.legs.length > 1) {
@@ -698,7 +715,7 @@ async def root():
                                 <h3 style="margin-top:0; border-bottom: 2px solid rgba(0,0,0,0.1); padding-bottom: 10px;">🚀 The Weekend Accumulator</h3>
                                 <div style="background: rgba(255,255,255,0.6); border-radius: 8px; padding: 10px; margin-bottom: 15px;">
                         `;
-                        
+
                         acca.legs.forEach(leg => {
                             accaHTML += `
                                 <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed rgba(0,0,0,0.2); padding: 8px 0;">
@@ -707,7 +724,7 @@ async def root():
                                 </div>
                             `;
                         });
-                        
+
                         accaHTML += `
                                 </div>
                                 <div style="display: flex; justify-content: space-between; align-items: center; font-size: 1.2em;">
@@ -718,7 +735,7 @@ async def root():
                             </div>
                         `;
                     }
-                    
+
                     resultDiv.innerHTML = accaHTML + html;
                 } catch (e) {
                     resultDiv.innerHTML = `<div style="color:red">Scan Error: ${e}</div>`;
@@ -728,6 +745,7 @@ async def root():
     </body>
     </html>
     """
+
 
 @app.get("/report-image")
 async def get_report_image(strategy: str):
@@ -739,6 +757,7 @@ async def get_report_image(strategy: str):
         raise HTTPException(status_code=404, detail="Report image not found. Please run the evaluation script first.")
     return FileResponse(path)
 
+
 @app.get("/teams")
 async def get_available_teams():
     """
@@ -747,15 +766,16 @@ async def get_available_teams():
     df = data_loader.load_data()
     if df.empty:
         raise HTTPException(status_code=503, detail="Failed to load data from Football-Data.co.uk. Check server logs.")
-    
+
     all_teams = sorted(list(set(df['HomeTeam'].unique()) | set(df['AwayTeam'].unique())))
     return {"teams": all_teams}
+
 
 @app.get("/predict")
 async def predict_api(home: str, away: str):
     if training_status["state"] == "failed":
         raise HTTPException(status_code=500, detail=f"Model training failed: {training_status['error']}")
-        
+
     if not predictor.is_trained:
         raise HTTPException(status_code=503, detail="Model is still training (approx 2 mins). Please refresh shortly.")
 
@@ -778,22 +798,22 @@ async def predict_api(home: str, away: str):
     df, elo_dict = feature_engineer.enrich_with_elo(df)
     home_elo = elo_dict.get(home, 1500)
     away_elo = elo_dict.get(away, 1500)
-    
+
     current_date = pd.Timestamp.now()
     features = feature_engineer.prepare_features(df, home, away, current_date, home_elo, away_elo)
-    
+
     # 4. Predict
     pred = predictor.predict(features)
-    
+
     # 5. Context Data
     home_history = get_recent_matches(df, home)
     away_history = get_recent_matches(df, away)
     h2h = get_h2h_history(df, home, away)
-    
+
     # Similar Matches
     home_similar = get_matches_against_similar_elo(df, home, away_elo)
     away_similar = get_matches_against_similar_elo(df, away, home_elo)
-    
+
     # Standings
     def get_latest_division(team_name):
         team_matches = df[(df['HomeTeam'] == team_name) | (df['AwayTeam'] == team_name)]
@@ -803,13 +823,13 @@ async def predict_api(home: str, away: str):
 
     home_div = get_latest_division(home)
     away_div = get_latest_division(away)
-    
+
     home_standings = get_standings(df, home_div) if home_div else []
     home_league_name = LEAGUE_NAMES.get(home_div, "Unknown League")
-    
+
     if home_standings:
-         for t in home_standings:
-             if t['Team'] == home: t['RestDays'] = features[15] # home_rest_days
+        for t in home_standings:
+            if t['Team'] == home: t['RestDays'] = features[15]  # home_rest_days
 
     if away_div != home_div:
         away_standings = get_standings(df, away_div) if away_div else []
@@ -817,15 +837,15 @@ async def predict_api(home: str, away: str):
     else:
         away_standings = home_standings
         away_league_name = home_league_name
-        
+
     if away_standings:
-         for t in away_standings:
-             if t['Team'] == away: t['RestDays'] = features[16] # away_rest_days
+        for t in away_standings:
+            if t['Team'] == away: t['RestDays'] = features[16]  # away_rest_days
 
     # 6. Calculate Fair Odds & Best Bet
     def to_odds(prob):
         return round(1 / prob, 2) if prob > 0.01 else 99.00
-        
+
     probs = {
         "Home Win": pred["home_win_prob"],
         "Away Win": pred["away_win_prob"],
@@ -835,17 +855,17 @@ async def predict_api(home: str, away: str):
         "Over 9.5 Corners": pred["corners_over_prob"],
         "Over 3.5 Cards": pred["cards_over_prob"]
     }
-    
+
     best_market = max(probs, key=probs.get)
     best_prob = probs[best_market]
-    
+
     recommendation = None
-    if best_prob > 0.60: 
-         recommendation = {
+    if best_prob > 0.60:
+        recommendation = {
             "market": best_market,
             "probability": best_prob,
             "fair_odds": to_odds(best_prob)
-         }
+        }
 
     return {
         "home_win": round(pred["home_win_prob"] * 100, 1),
@@ -900,6 +920,7 @@ async def predict_api(home: str, away: str):
         "away_league_name": away_league_name
     }
 
+
 @app.get("/scan")
 async def scan_market():
     """
@@ -907,37 +928,39 @@ async def scan_market():
     """
     if training_status["state"] == "failed":
         return {"picks": [], "acca": None, "message": f"System Error: {training_status['error']}"}
-        
+
     if not predictor.is_trained:
-        return {"picks": [], "acca": None, "message": "Model is still training (approx 2 mins). Please try again shortly."}
+        return {"picks": [], "acca": None,
+                "message": "Model is still training (approx 2 mins). Please try again shortly."}
 
     df = data_loader.load_data()
     if df.empty: return {"picks": [], "acca": None, "message": "Data could not be loaded."}
-    
+
     # Filter for upcoming matches (where FTHG is NaN)
     today = pd.Timestamp.now().normalize()
     next_week = today + timedelta(days=7)
     upcoming = df[(df['Date'] >= today) & (df['Date'] <= next_week) & (df['FTHG'].isna())]
-    
+
     picks = []
-    
+
     # Pre-calc ELO
     df_hist, elo_dict = feature_engineer.enrich_with_elo(df)
-    
+
     for _, row in upcoming.iterrows():
         home, away = row['HomeTeam'], row['AwayTeam']
-        
+
         # Skip if we don't have enough history for these teams
         if home not in elo_dict or away not in elo_dict: continue
-        
+
         home_elo = elo_dict[home]
         away_elo = elo_dict[away]
-        
+
         # FIX: Ensure we only use data from before the match to calculate features
         historical_data_for_match = df_hist[df_hist['Date'] < row['Date']]
-        features = feature_engineer.prepare_features(historical_data_for_match, home, away, row['Date'], home_elo, away_elo)
+        features = feature_engineer.prepare_features(historical_data_for_match, home, away, row['Date'], home_elo,
+                                                     away_elo)
         pred = predictor.predict(features)
-        
+
         # Check for high confidence (>65%)
         # We check Over 2.5 Goals specifically as it was our best performing model
         prob = pred["over_25_prob"]
@@ -948,23 +971,23 @@ async def scan_market():
                 "match": f"{home} vs {away}",
                 "market": "Over 2.5 Goals",
                 "prob": round(prob * 100, 1),
-                "fair_odds": round(1/prob, 2)
+                "fair_odds": round(1 / prob, 2)
             })
-    
+
     # Sort by probability (highest first)
     picks.sort(key=lambda x: x['prob'], reverse=True)
-    
+
     # Generate Accumulator (Top 3 safest bets)
     # Filter for very high confidence (>70%) to be safe
     safe_bets = [p for p in picks if p['prob'] > 70]
-    
+
     # Take top 3, or top 3 from picks if not enough safe ones
     acca_legs = safe_bets[:3] if len(safe_bets) >= 3 else picks[:3]
-    
+
     acca_odds = 1.0
     for leg in acca_legs:
         acca_odds *= leg['fair_odds']
-        
+
     acca = {
         "legs": acca_legs,
         "total_odds": round(acca_odds, 2)
