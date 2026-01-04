@@ -47,98 +47,75 @@ class FeatureEngineer:
     @staticmethod
     def calculate_goal_stats(df, team_name, last_n=5):
         """
-        Calculate average goals scored and conceded in last N matches.
+        Calculate average goals scored and conceded in last N matches using EWMA.
         """
         played_df = df.dropna(subset=['FTR'])
-        team_matches = played_df[(played_df['HomeTeam'] == team_name) | (played_df['AwayTeam'] == team_name)].tail(last_n)
+        team_matches = played_df[(played_df['HomeTeam'] == team_name) | (played_df['AwayTeam'] == team_name)]
         
-        if team_matches.empty:
+        if len(team_matches) < last_n:
             return 0, 0
             
-        scored = 0
-        conceded = 0
+        # Create series for goals scored and conceded by the team
+        scored = pd.Series(np.where(team_matches['HomeTeam'] == team_name, team_matches['FTHG'], team_matches['FTAG']), index=team_matches.index)
+        conceded = pd.Series(np.where(team_matches['HomeTeam'] == team_name, team_matches['FTAG'], team_matches['FTHG']), index=team_matches.index)
         
-        for _, match in team_matches.iterrows():
-            if match['HomeTeam'] == team_name:
-                scored += match['FTHG']
-                conceded += match['FTAG']
-            else:
-                scored += match['FTAG']
-                conceded += match['FTHG']
-                
-        avg_scored = round(scored / len(team_matches), 2)
-        avg_conceded = round(conceded / len(team_matches), 2)
+        # Calculate the exponentially weighted moving average
+        avg_scored = scored.ewm(span=last_n, adjust=False).mean().iloc[-1]
+        avg_conceded = conceded.ewm(span=last_n, adjust=False).mean().iloc[-1]
         
         return avg_scored, avg_conceded
 
     @staticmethod
     def calculate_shot_stats(df, team_name, last_n=5):
         """
-        Calculate average Shots and Shots on Target (HST/AST) in last N matches.
+        Calculate average Shots and Shots on Target in last N matches using EWMA.
         """
         played_df = df.dropna(subset=['FTR'])
-        team_matches = played_df[(played_df['HomeTeam'] == team_name) | (played_df['AwayTeam'] == team_name)].tail(last_n)
+        team_matches = played_df[(played_df['HomeTeam'] == team_name) | (played_df['AwayTeam'] == team_name)]
         
-        if team_matches.empty:
+        if len(team_matches) < last_n:
             return 0, 0
             
-        shots = 0
-        shots_ot = 0
+        # Create series for shots and shots on target
+        shots = pd.Series(np.where(team_matches['HomeTeam'] == team_name, team_matches['HS'], team_matches['AS']), index=team_matches.index)
+        shots_ot = pd.Series(np.where(team_matches['HomeTeam'] == team_name, team_matches['HST'], team_matches['AST']), index=team_matches.index)
         
-        for _, match in team_matches.iterrows():
-            if match['HomeTeam'] == team_name:
-                shots += match['HS']
-                shots_ot += match['HST']
-            else:
-                shots += match['AS']
-                shots_ot += match['AST']
-                
-        avg_shots = round(shots / len(team_matches), 2)
-        avg_shots_ot = round(shots_ot / len(team_matches), 2)
+        avg_shots = shots.ewm(span=last_n, adjust=False).mean().iloc[-1]
+        avg_shots_ot = shots_ot.ewm(span=last_n, adjust=False).mean().iloc[-1]
         
         return avg_shots, avg_shots_ot
 
     @staticmethod
     def calculate_corner_stats(df, team_name, last_n=5):
         """
-        Calculate average Corners in last N matches.
+        Calculate average Corners in last N matches using EWMA.
         """
         played_df = df.dropna(subset=['FTR'])
-        team_matches = played_df[(played_df['HomeTeam'] == team_name) | (played_df['AwayTeam'] == team_name)].tail(last_n)
+        team_matches = played_df[(played_df['HomeTeam'] == team_name) | (played_df['AwayTeam'] == team_name)]
         
-        if team_matches.empty:
+        if len(team_matches) < last_n:
             return 0
             
-        corners = 0
-        for _, match in team_matches.iterrows():
-            if match['HomeTeam'] == team_name:
-                corners += match['HC']
-            else:
-                corners += match['AC']
-                
-        avg_corners = round(corners / len(team_matches), 2)
-        return avg_corners
+        corners = pd.Series(np.where(team_matches['HomeTeam'] == team_name, team_matches['HC'], team_matches['AC']), index=team_matches.index)
+        
+        avg_corners = corners.ewm(span=last_n, adjust=False).mean().iloc[-1]
+        return round(avg_corners, 2)
 
     @staticmethod
     def calculate_card_stats(df, team_name, last_n=5):
         """
-        Calculate average Cards (Yellow + Red) in last N matches.
+        Calculate average Cards (Yellow + Red) in last N matches using EWMA.
         """
         played_df = df.dropna(subset=['FTR'])
-        team_matches = played_df[(played_df['HomeTeam'] == team_name) | (played_df['AwayTeam'] == team_name)].tail(last_n)
+        team_matches = played_df[(played_df['HomeTeam'] == team_name) | (played_df['AwayTeam'] == team_name)]
         
-        if team_matches.empty:
+        if len(team_matches) < last_n:
             return 0
             
-        cards = 0
-        for _, match in team_matches.iterrows():
-            if match['HomeTeam'] == team_name:
-                cards += match.get('HY', 0) + match.get('HR', 0)
-            else:
-                cards += match.get('AY', 0) + match.get('AR', 0)
-                
-        avg_cards = round(cards / len(team_matches), 2)
-        return avg_cards
+        cards = pd.Series(np.where(team_matches['HomeTeam'] == team_name, team_matches['HY'] + team_matches['HR'], team_matches['AY'] + team_matches['AR']), index=team_matches.index)
+        
+        avg_cards = cards.ewm(span=last_n, adjust=False).mean().iloc[-1]
+        return round(avg_cards, 2)
 
     @staticmethod
     def calculate_rest_days(df, team_name, current_match_date):

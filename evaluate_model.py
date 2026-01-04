@@ -6,7 +6,7 @@ from src.data_loader import FootballDataLoader
 from src.features import FeatureEngineer
 from src.model import MatchPredictor
 from src.config import settings
-from sklearn.ensemble import GradientBoostingClassifier
+import xgboost as xgb
 
 
 def evaluate():
@@ -104,7 +104,7 @@ def evaluate():
 
     # --- MODEL 1: MATCH WINNER ---
     print("\nEvaluating Match Winner Model...")
-    model = GradientBoostingClassifier(n_estimators=100, learning_rate=0.1, max_depth=5, random_state=42)
+    model = xgb.XGBClassifier(n_estimators=100, learning_rate=0.05, max_depth=4, eval_metric='mlogloss', random_state=42)
     model.fit(X_train, y_train)
 
     probs = model.predict_proba(X_test)
@@ -114,7 +114,7 @@ def evaluate():
 
     # --- MODEL 2: OVER/UNDER 2.5 ---
     print("Evaluating Over/Under 2.5 Model...")
-    model_ou = GradientBoostingClassifier(n_estimators=100, learning_rate=0.1, max_depth=5, random_state=42)
+    model_ou = xgb.XGBClassifier(n_estimators=100, learning_rate=0.05, max_depth=4, eval_metric='logloss', random_state=42)
     model_ou.fit(X_train, y_ou_train)
 
     probs_ou = model_ou.predict_proba(X_test)
@@ -124,7 +124,7 @@ def evaluate():
 
     # --- MODEL 3: BTTS ---
     print("Evaluating BTTS Model...")
-    model_btts = GradientBoostingClassifier(n_estimators=100, learning_rate=0.1, max_depth=5, random_state=42)
+    model_btts = xgb.XGBClassifier(n_estimators=100, learning_rate=0.05, max_depth=4, eval_metric='logloss', random_state=42)
     model_btts.fit(X_train, y_btts_train)
 
     probs_btts = model_btts.predict_proba(X_test)

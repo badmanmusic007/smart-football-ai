@@ -1,4 +1,4 @@
-from sklearn.ensemble import GradientBoostingClassifier
+import xgboost as xgb
 import pandas as pd
 import pickle
 from pathlib import Path
@@ -7,32 +7,42 @@ from src.config import settings
 class MatchPredictor:
     def __init__(self):
         # Optimized Hyperparameters from Tuning (Phase 18)
-        params = {
+        # Parameters for binary classification models (Over/Under, BTTS, etc.)
+        binary_params = {
             'n_estimators': 100,
-            'learning_rate': 0.01,
-            'max_depth': 5,
+            'learning_rate': 0.05,
+            'max_depth': 4,
             'subsample': 0.9,
-            'min_samples_split': 2,
+            'colsample_bytree': 0.9,
+            'objective': 'binary:logistic',
+            'eval_metric': 'logloss',
             'random_state': settings.RANDOM_SEED
+        }
+        
+        # Parameters for multi-class classification (Win/Draw/Loss)
+        multi_class_params = {
+            **binary_params, # Inherit common params
+            'objective': 'multi:softprob',
+            'num_class': 3
         }
 
         # Model 1: Match Result (Home/Draw/Away)
-        self.model_res = GradientBoostingClassifier(**params)
+        self.model_res = xgb.XGBClassifier(**multi_class_params)
         
         # Goal Models (1.5, 2.5, 3.5, 4.5)
-        self.model_ou15 = GradientBoostingClassifier(**params)
-        self.model_ou25 = GradientBoostingClassifier(**params)
-        self.model_ou35 = GradientBoostingClassifier(**params)
-        self.model_ou45 = GradientBoostingClassifier(**params)
+        self.model_ou15 = xgb.XGBClassifier(**binary_params)
+        self.model_ou25 = xgb.XGBClassifier(**binary_params)
+        self.model_ou35 = xgb.XGBClassifier(**binary_params)
+        self.model_ou45 = xgb.XGBClassifier(**binary_params)
         
         # BTTS Model (Both Teams To Score)
-        self.model_btts = GradientBoostingClassifier(**params)
+        self.model_btts = xgb.XGBClassifier(**binary_params)
         
         # Corners Model (Over/Under 9.5)
-        self.model_corners = GradientBoostingClassifier(**params)
+        self.model_corners = xgb.XGBClassifier(**binary_params)
         
         # Cards Model (Over/Under 3.5)
-        self.model_cards = GradientBoostingClassifier(**params)
+        self.model_cards = xgb.XGBClassifier(**binary_params)
 
         self.is_trained = False
         self.load_model()
