@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 class FootballDataLoader:
     def __init__(self):
         self.data = None
-        self.cache_file = settings.DATA_DIR / "match_data_final_v20.csv"
+        self.cache_file = settings.DATA_DIR / "match_data_final_v22.csv"
 
     def load_data(self):
         """

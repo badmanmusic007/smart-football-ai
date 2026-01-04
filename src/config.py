@@ -22,6 +22,7 @@ class Config:
 
         # 2025/2026 Season (Current)
         "https://www.football-data.co.uk/mmz4281/2526/E0.csv",  # Premier League
+        "https://www.football-data.co.uk/mmz4281/2526/E1.csv",  # Championship
         "https://www.football-data.co.uk/mmz4281/2526/SP1.csv", # La Liga
         "https://www.football-data.co.uk/mmz4281/2526/D1.csv",  # Bundesliga
         "https://www.football-data.co.uk/mmz4281/2526/I1.csv",  # Serie A
@@ -32,6 +33,7 @@ class Config:
 
         # 2024/2025 Season (History)
         "https://www.football-data.co.uk/mmz4281/2425/E0.csv",
+        "https://www.football-data.co.uk/mmz4281/2425/E1.csv",
         "https://www.football-data.co.uk/mmz4281/2425/SP1.csv",
         "https://www.football-data.co.uk/mmz4281/2425/D1.csv",
         "https://www.football-data.co.uk/mmz4281/2425/I1.csv",
@@ -42,6 +44,7 @@ class Config:
 
         # 2023/2024 Season (History)
         "https://www.football-data.co.uk/mmz4281/2324/E0.csv",
+        "https://www.football-data.co.uk/mmz4281/2324/E1.csv",
         "https://www.football-data.co.uk/mmz4281/2324/SP1.csv",
         "https://www.football-data.co.uk/mmz4281/2324/D1.csv",
         "https://www.football-data.co.uk/mmz4281/2324/I1.csv",
@@ -52,6 +55,7 @@ class Config:
 
         # 2022/2023 Season (History)
         "https://www.football-data.co.uk/mmz4281/2223/E0.csv",
+        "https://www.football-data.co.uk/mmz4281/2223/E1.csv",
         "https://www.football-data.co.uk/mmz4281/2223/SP1.csv",
         "https://www.football-data.co.uk/mmz4281/2223/D1.csv",
         "https://www.football-data.co.uk/mmz4281/2223/I1.csv",

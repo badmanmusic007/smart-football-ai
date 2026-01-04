@@ -65,11 +65,14 @@ RIVALRIES = {
     tuple(sorted(["Ajax", "Feyenoord"])): "De Klassieker",
     tuple(sorted(["Bayern Munich", "Dortmund"])): "Der Klassiker",
     tuple(sorted(["Arsenal", "Chelsea"])): "London Derby",
-    tuple(sorted(["Chelsea", "Tottenham"])): "London Derby"
+    tuple(sorted(["Chelsea", "Tottenham"])): "London Derby",
+    tuple(sorted(["Newcastle", "Sunderland"])): "Tyne-Wear Derby",
+    tuple(sorted(["Man United", "Leeds"])): "Roses Rivalry"
 }
 
 LEAGUE_NAMES = {
     'E0': 'Premier League',
+    'E1': 'Championship',
     'SP1': 'La Liga',
     'D1': 'Bundesliga',
     'I1': 'Serie A',
