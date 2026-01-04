@@ -8,6 +8,8 @@ import logging
 import pandas as pd
 from datetime import timedelta
 import numpy as np
+import threading
+import train_model
 
 # Initialize Logging
 logging.basicConfig(level=logging.INFO)
@@ -23,6 +25,23 @@ app = FastAPI(
 data_loader = FootballDataLoader()
 feature_engineer = FeatureEngineer()
 predictor = MatchPredictor()
+
+def run_background_training():
+    """Runs training in a separate thread to avoid blocking startup."""
+    try:
+        logger.info("Starting background training...")
+        train_model.train_real_model()
+        predictor.load_model()
+        logger.info("Background training complete. Model loaded.")
+    except Exception as e:
+        logger.error(f"Background training failed: {e}")
+
+@app.on_event("startup")
+async def startup_event():
+    if not predictor.is_trained:
+        logger.info("Model not found. Initiating background training...")
+        thread = threading.Thread(target=run_background_training)
+        thread.start()
 
 # --- Rivalry Logic Database ---
 RIVALRIES = {
