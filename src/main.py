@@ -383,11 +383,11 @@ async def root():
             .prob-box { background: #f8f9fa; padding: 15px; border-radius: 10px; border-top: 4px solid var(--primary); }
 
             /* Comparison Styles */
-            .comp-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #eee; }
-            .comp-val { font-weight: bold; width: 30%; font-size: 1.1em; }
-            .comp-val.home { text-align: right; color: #333; }
-            .comp-val.away { text-align: left; color: #333; }
-            .comp-lbl { font-size: 0.8em; color: #888; text-align: center; width: 40%; text-transform: uppercase; letter-spacing: 0.5px; }
+            .comp-row { display: flex; align-items: center; padding: 8px 0; border-bottom: 1px solid #eee; }
+            .comp-val { font-weight: bold; flex: 1; font-size: 1em; white-space: nowrap; }
+            .comp-val.home { text-align: right; padding-right: 5px; color: #333; }
+            .comp-val.away { text-align: left; padding-left: 5px; color: #333; }
+            .comp-lbl { font-size: 0.75em; color: #888; text-align: center; width: 44%; flex-shrink: 0; text-transform: uppercase; letter-spacing: 0.5px; line-height: 1.1; }
 
             /* Team Badges */
             .team-badge { display: inline-block; font-size: 0.75em; padding: 2px 6px; border-radius: 4px; color: white; margin-right: 4px; margin-top: 4px; font-weight: bold; }
