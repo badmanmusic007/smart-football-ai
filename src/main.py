@@ -275,11 +275,27 @@ def generate_badges(features, is_home):
     if goals_conceded <= 0.8: badges.append({"text": "🚌 Iron Defense", "color": "#5352ed"})
     return badges
 
+def get_oracle_prediction(home_xg, away_xg):
+    """Simulate match 1000 times to find most likely score."""
+    home_xg = max(home_xg, 0.1)
+    away_xg = max(away_xg, 0.1)
+    n_sims = 1000
+    
+    h_goals = np.random.poisson(home_xg, n_sims)
+    a_goals = np.random.poisson(away_xg, n_sims)
+    
+    scores = {}
+    for h, a in zip(h_goals, a_goals):
+        s = f"{h}-{a}"
+        scores[s] = scores.get(s, 0) + 1
+        
+    return max(scores, key=scores.get)
+
 def sanitize_payload(data):
     """Recursively replace NaN/Infinity with 0.0 for JSON compliance."""
     if isinstance(data, dict):
         return {k: sanitize_payload(v) for k, v in data.items()}
-    elif isinstance(data, (list, tuple)):
+    elif isinstance(data, list) or isinstance(data, tuple):
         return [sanitize_payload(v) for v in data]
     elif isinstance(data, (float, np.floating)):
         if np.isnan(data) or np.isinf(data):
@@ -402,6 +418,13 @@ async def root():
                 .container { padding: 20px; }
                 body { padding: 10px; }
             }
+            
+            /* Deep Dive Styles */
+            .dd-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+            .dd-box { background: #fff; border: 1px solid #eee; padding: 10px; border-radius: 6px; }
+            .dd-title { font-size: 0.8em; color: #888; text-transform: uppercase; margin-bottom: 5px; }
+            .dd-val { font-weight: bold; font-size: 1.1em; color: #333; }
+            .dd-sub { font-size: 0.75em; color: #666; }
 
             /* Scanner Styles */
             .scan-btn { background: #6f42c1; color: white; border: none; padding: 12px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; width: 100%; margin-top: 10px; transition: 0.3s; }
@@ -634,6 +657,57 @@ async def root():
                         return badges.map(b => `<span class="team-badge" style="background-color: ${b.color}">${b.text}</span>`).join('');
                     };
 
+                    let oracleHTML = '';
+                    if (data.oracle_score) {
+                        oracleHTML = `
+                            <div style="background: #333; color: white; padding: 10px; border-radius: 8px; margin-bottom: 20px; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.2);">
+                                <div style="font-size: 0.8em; text-transform: uppercase; letter-spacing: 1px; color: #aaa;">🔮 Oracle Prediction</div>
+                                <div style="font-size: 2em; font-weight: bold; letter-spacing: 2px;">${data.oracle_score}</div>
+                            </div>`;
+                    }
+
+                    const renderDeepDive = (stats, teamName) => {
+                        if (!stats) return `<div class="dd-box">No data for ${teamName}</div>`;
+                        
+                        const shotAcc = stats.total_shots > 0 ? ((stats.total_sot / stats.total_shots) * 100).toFixed(0) : 0;
+                        const goalConv = stats.total_sot > 0 ? ((stats.goals_from_sot / stats.total_sot) * 100).toFixed(0) : 0;
+                        
+                        const leadWinRate = stats.leading_at_ht > 0 ? ((stats.won_when_leading_ht / stats.leading_at_ht) * 100).toFixed(0) : 0;
+                        const comebackRate = stats.losing_at_ht > 0 ? ((stats.won_when_losing_ht / stats.losing_at_ht) * 100).toFixed(0) : 0;
+                        
+                        return `
+                            <div style="margin-bottom: 15px;">
+                                <h4 style="margin: 0 0 8px 0; color: var(--primary);">${teamName}</h4>
+                                <div class="dd-grid">
+                                    <div class="dd-box">
+                                        <div class="dd-title">🎯 Shooting</div>
+                                        <div class="dd-val">${stats.total_shots} <span class="dd-sub">Shots</span></div>
+                                        <div class="dd-sub">${shotAcc}% On Target</div>
+                                    </div>
+                                    <div class="dd-box">
+                                        <div class="dd-title">⚽ Clinicality</div>
+                                        <div class="dd-val">${stats.goals_from_sot} <span class="dd-sub">Goals</span></div>
+                                        <div class="dd-sub">${goalConv}% Conversion</div>
+                                    </div>
+                                    <div class="dd-box">
+                                        <div class="dd-title">🛡️ Lead Defense</div>
+                                        <div class="dd-val">${stats.won_when_leading_ht}/${stats.leading_at_ht}</div>
+                                        <div class="dd-sub">${leadWinRate}% Won (HT Lead)</div>
+                                    </div>
+                                    <div class="dd-box">
+                                        <div class="dd-title">🔄 Resilience</div>
+                                        <div class="dd-val">${stats.won_when_losing_ht}/${stats.losing_at_ht}</div>
+                                        <div class="dd-sub">${comebackRate}% Won (HT Loss)</div>
+                                    </div>
+                                    <div class="dd-box" style="grid-column: span 2;">
+                                        <div class="dd-title">⚠️ Threats & Notes</div>
+                                        <div class="dd-sub">Clean Sheets: <b>${stats.clean_sheets}</b> | Failed to Score: <b>${stats.failed_to_score}</b></div>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    };
+
                     // Helper for history
                     const renderHistory = (matches) => matches.map(m => 
                         `<div class="match-row">
@@ -676,6 +750,7 @@ async def root():
                 resultDiv.innerHTML = `
                     <div class="animate-in">
                         ${rivalryHTML}
+                        ${oracleHTML}
                         ${bestBetHTML}
                         
                         <h2>Match Outcome Probability</h2>
@@ -707,6 +782,13 @@ async def root():
                                 <div class="comp-row"><div class="comp-val home">${data.features_used.home_cards}</div><div class="comp-lbl">Avg Cards</div><div class="comp-val away">${data.features_used.away_cards}</div></div>
                                 <div class="comp-row"><div class="comp-val home">${data.features_used.home_rest_days}d</div><div class="comp-lbl">Rest Days</div><div class="comp-val away">${data.features_used.away_rest_days}d</div></div>
                             </div>
+                        </div>
+
+                        <button class="collapsible" onclick="toggleCollapsible(this)">🤿 Deep Dive</button>
+                        <div class="content">
+                            ${renderDeepDive(data.home_deep_dive, home)}
+                            <hr style="border: 0; border-top: 1px dashed #eee; margin: 15px 0;">
+                            ${renderDeepDive(data.away_deep_dive, away)}
                         </div>
 
                         <button class="collapsible" onclick="toggleCollapsible(this)">📈 Over/Under Markets</button>
@@ -859,13 +941,24 @@ async def predict_api(home: str, away: str):
     # Check for rivalry
     rivalry = get_rivalry_info(home, away)
 
+    # Helper to find division
+    def get_latest_division(team_name):
+        team_matches = df[(df['HomeTeam'] == team_name) | (df['AwayTeam'] == team_name)]
+        if not team_matches.empty:
+            return team_matches.iloc[-1]['Div']
+        return None
+
     # 3. ELO & Features
     df, elo_dict = feature_engineer.enrich_with_elo(df)
     home_elo = elo_dict.get(home, 1500)
     away_elo = elo_dict.get(away, 1500)
 
     current_date = pd.Timestamp.now()
-    features = feature_engineer.prepare_features(df, home, away, current_date, home_elo, away_elo)
+    # Determine division for context (default to E0 if unknown)
+    home_div = get_latest_division(home) or 'E0'
+    
+    # Pass division and dummy referee ('Unknown') to feature engineer
+    features = feature_engineer.prepare_features(df, home, away, current_date, home_div, 'Unknown', home_elo, away_elo)
 
     # 4. Predict
     pred = predictor.predict(features)
@@ -878,19 +971,16 @@ async def predict_api(home: str, away: str):
     # Badges
     home_badges = generate_badges(features, is_home=True)
     away_badges = generate_badges(features, is_home=False)
+    
+    # Deep Dive Stats
+    home_deep_dive = feature_engineer.calculate_deep_dive(df, home)
+    away_deep_dive = feature_engineer.calculate_deep_dive(df, away)
 
     # Similar Matches
     home_similar = get_matches_against_similar_elo(df, home, away_elo)
     away_similar = get_matches_against_similar_elo(df, away, home_elo)
 
     # Standings
-    def get_latest_division(team_name):
-        team_matches = df[(df['HomeTeam'] == team_name) | (df['AwayTeam'] == team_name)]
-        if not team_matches.empty:
-            return team_matches.iloc[-1]['Div']
-        return None
-
-    home_div = get_latest_division(home)
     away_div = get_latest_division(away)
 
     home_standings = get_standings(df, home_div) if home_div else []
@@ -910,6 +1000,11 @@ async def predict_api(home: str, away: str):
     if away_standings:
         for t in away_standings:
             if t['Team'] == away: t['RestDays'] = features[16]  # away_rest_days
+            
+    # 5b. Oracle Simulation
+    avg_home_goals = (features[5] + features[8]) / 2
+    avg_away_goals = (features[6] + features[7]) / 2
+    oracle_score = get_oracle_prediction(avg_home_goals, avg_away_goals)
 
     # 6. Calculate Fair Odds & Best Bet
     def to_odds(prob):
@@ -948,26 +1043,35 @@ async def predict_api(home: str, away: str):
             "home_home_form": features[2],
             "away_away_form": features[3],
             "h2h_home_wins": features[4],
-            "home_goals_scored": features[5],
-            "away_goals_scored": features[6],
-            "home_goals_conceded": features[7],
-            "away_goals_conceded": features[8],
+            "home_goals_scored": round(features[5], 1),
+            "away_goals_scored": round(features[6], 1),
+            "home_goals_conceded": round(features[7], 1),
+            "away_goals_conceded": round(features[8], 1),
             "home_elo": features[9],
             "away_elo": features[10],
-            "home_shots": features[11],
-            "away_shots": features[12],
-            "home_shots_ot": features[13],
-            "away_shots_ot": features[14],
+            "home_shots": round(features[11], 1),
+            "away_shots": round(features[12], 1),
+            "home_shots_ot": round(features[13], 1),
+            "away_shots_ot": round(features[14], 1),
             "home_rest_days": features[15],
             "away_rest_days": features[16],
-            "home_corners": features[17],
-            "away_corners": features[18],
-            "home_cards": features[19],
-            "away_cards": features[20]
+            "home_corners": round(features[17], 1),
+            "away_corners": round(features[18], 1),
+            "home_cards": round(features[19], 1),
+            "away_cards": round(features[20], 1),
+            # Advanced Stats (Phases 26-29)
+            "home_conversion": features[21] if len(features) > 21 else 0,
+            "away_conversion": features[22] if len(features) > 22 else 0,
+            "home_save_ratio": features[23] if len(features) > 23 else 0,
+            "away_save_ratio": features[24] if len(features) > 24 else 0,
+            "referee_harshness": features[27] if len(features) > 27 else 0
         },
         "prediction": pred,
+        "oracle_score": oracle_score,
         "home_badges": home_badges,
         "away_badges": away_badges,
+        "home_deep_dive": home_deep_dive,
+        "away_deep_dive": away_deep_dive,
         "recommendation": recommendation,
         "fair_odds": {
             "home_win": to_odds(pred["home_win_prob"]),
@@ -1027,11 +1131,12 @@ async def scan_market():
 
         home_elo = elo_dict[home]
         away_elo = elo_dict[away]
+        div = row['Div']
+        referee = row['Referee']
 
         # FIX: Ensure we only use data from before the match to calculate features
         historical_data_for_match = df_hist[df_hist['Date'] < row['Date']]
-        features = feature_engineer.prepare_features(historical_data_for_match, home, away, row['Date'], home_elo,
-                                                     away_elo)
+        features = feature_engineer.prepare_features(historical_data_for_match, home, away, row['Date'], div, referee, home_elo, away_elo)
         pred = predictor.predict(features)
 
         # Check for high confidence (>65%)

@@ -132,6 +132,71 @@ class FeatureEngineer:
         delta = (current_match_date - last_match_date).days
         return min(delta, 14) # Cap at 14 days (fully rested)
 
+    @staticmethod
+    def calculate_deep_dive(df, team_name):
+        """
+        Calculate deep dive stats for the current season (from July 2025).
+        """
+        season_start = pd.Timestamp("2025-07-01")
+        # Filter for played matches in current season involving the team
+        matches = df[
+            ((df['HomeTeam'] == team_name) | (df['AwayTeam'] == team_name)) & 
+            (df['Date'] > season_start) & 
+            (df['FTR'].notna())
+        ].copy()
+        
+        if matches.empty:
+            return None
+            
+        stats = {
+            "matches_played": len(matches),
+            "total_shots": 0,
+            "total_sot": 0,
+            "goals_from_sot": 0,
+            "leading_at_ht": 0,
+            "won_when_leading_ht": 0,
+            "losing_at_ht": 0,
+            "won_when_losing_ht": 0, # Comebacks
+            "clean_sheets": 0,
+            "failed_to_score": 0
+        }
+        
+        for _, row in matches.iterrows():
+            is_home = row['HomeTeam'] == team_name
+            
+            # Shooting
+            shots = row['HS'] if is_home else row['AS']
+            sot = row['HST'] if is_home else row['AST']
+            goals = row['FTHG'] if is_home else row['FTAG']
+            opponent_goals = row['FTAG'] if is_home else row['FTHG']
+            
+            stats["total_shots"] += shots
+            stats["total_sot"] += sot
+            stats["goals_from_sot"] += goals
+            
+            # Consistency
+            if opponent_goals == 0: stats["clean_sheets"] += 1
+            if goals == 0: stats["failed_to_score"] += 1
+            
+            # Game State (HT/FT)
+            ht_home = row['HTHG']
+            ht_away = row['HTAG']
+            
+            # Check if leading at HT
+            leading_ht = (is_home and ht_home > ht_away) or (not is_home and ht_away > ht_home)
+            losing_ht = (is_home and ht_home < ht_away) or (not is_home and ht_away < ht_home)
+            won_ft = (is_home and row['FTR'] == 'H') or (not is_home and row['FTR'] == 'A')
+            
+            if leading_ht:
+                stats["leading_at_ht"] += 1
+                if won_ft: stats["won_when_leading_ht"] += 1
+            
+            if losing_ht:
+                stats["losing_at_ht"] += 1
+                if won_ft: stats["won_when_losing_ht"] += 1
+                
+        return stats
+
     def enrich_with_elo(self, df):
         """
         Iterate through the dataframe and calculate ELO ratings for every match.

@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 class FootballDataLoader:
     def __init__(self):
         self.data = None
-        self.cache_file = settings.DATA_DIR / "match_data_final_v22.csv"
+        self.cache_file = settings.DATA_DIR / "match_data_final_v24.csv"
 
     def load_data(self):
         """
@@ -84,14 +84,15 @@ class FootballDataLoader:
                                 df[target] = df[candidate]
                                 break
                 
-                expected_cols = ['Div', 'Date', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG', 'FTR', 'B365H', 'B365D', 'B365A', 'B365>2.5', 'B365<2.5', 'B365BTTSY', 'B365BTTSN', 'HS', 'AS', 'HST', 'AST', 'HC', 'AC', 'HY', 'AY', 'HR', 'AR']
+                expected_cols = ['Div', 'Date', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG', 'FTR', 'HTHG', 'HTAG', 'Referee', 'B365H', 'B365D', 'B365A', 'B365>2.5', 'B365<2.5', 'B365BTTSY', 'B365BTTSN', 'HS', 'AS', 'HST', 'AST', 'HC', 'AC', 'HY', 'AY', 'HR', 'AR']
 
                 # Handle missing columns (e.g. BTTS odds might not exist in all leagues)
                 for col in expected_cols:
                     if col not in df.columns:
                         if col == 'Div': df[col] = 'Unknown'
+                        elif col == 'Referee': df[col] = 'Unknown'
                         # Use np.nan for missing numerical data so isnull() works correctly
-                        elif col in ['FTHG', 'FTAG', 'FTR']: df[col] = np.nan
+                        elif col in ['FTHG', 'FTAG', 'FTR', 'HTHG', 'HTAG']: df[col] = np.nan
                         # Fill stats/odds with 0.0 to prevent model crashes
                         else: df[col] = 0.0
                 
