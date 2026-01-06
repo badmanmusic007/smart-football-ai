@@ -1,36 +1,32 @@
 from src.data_loader import FootballDataLoader
 from datetime import datetime
+import pandas as pd
 
 def get_upcoming_ids():
     loader = FootballDataLoader()
     
-    # League 39 = Premier League
-    # Season 2024 = 2024/2025 Season (Current Active Season)
-    print("Fetching upcoming Premier League matches...")
+    print("Fetching upcoming matches from local data...")
     
-    # This gets all matches for the season
-    matches = loader.get_fixtures(league_id=39, season=2024)
+    # Load data
+    df = loader.load_data()
     
-    if not matches:
-        print("Error: No matches found.")
-        print("1. Check the [API ERROR] message above.")
-        print("2. Ensure your API Key in .env is correct and saved.")
+    if df.empty:
+        print("Error: No data found.")
         return
     
-    # Filter for matches in the future
-    upcoming = []
-    current_time = datetime.now().isoformat()
+    # Filter for matches in the future (where FTHG is NaN and Date is >= today)
+    today = pd.Timestamp.now().normalize()
+    upcoming = df[(df['Date'] >= today) & (df['FTHG'].isna())].sort_values('Date')
     
-    for match in matches:
-        if match['fixture']['date'] > current_time:
-            upcoming.append(match)
+    if upcoming.empty:
+        print("No upcoming matches found in the current dataset.")
+        return
     
-    # Sort by date and show next 5
-    upcoming.sort(key=lambda x: x['fixture']['date'])
-    
-    print("\n--- UPCOMING MATCH IDs ---")
-    for match in upcoming[:5]:
-        print(f"ID: {match['fixture']['id']} | {match['teams']['home']['name']} vs {match['teams']['away']['name']}")
+    print("\n--- UPCOMING MATCHES ---")
+    # Show next 10 matches
+    for _, row in upcoming.head(10).iterrows():
+        date_str = row['Date'].strftime('%Y-%m-%d')
+        print(f"Date: {date_str} | {row['HomeTeam']} vs {row['AwayTeam']} ({row['Div']})")
 
 if __name__ == "__main__":
     get_upcoming_ids()

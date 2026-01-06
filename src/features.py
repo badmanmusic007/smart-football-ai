@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+from src.weather import get_weather_forecast
 
 
 class FeatureEngineer:
@@ -171,28 +172,6 @@ class FeatureEngineer:
         return min(delta, 14)  # Cap at 14 days (fully rested)
 
     @staticmethod
-    def get_league_avg_card_rate(df):
-        """Calculate the average cards per match across the entire dataset."""
-        played_df = df.dropna(subset=['FTR'])
-        if played_df.empty:
-            return 3.5  # A reasonable default
-        total_cards = played_df['HY'].sum() + played_df['AY'].sum() + played_df['HR'].sum() + played_df['AR'].sum()
-        return total_cards / len(played_df)
-
-    @staticmethod
-    def calculate_referee_harshness(df, referee_name):
-        """Calculate the average total cards given by a specific referee."""
-        played_df = df.dropna(subset=['FTR'])
-        ref_matches = played_df[played_df['Referee'] == referee_name]
-
-        if len(ref_matches) < 5:  # Not enough data on this ref
-            return None  # Signal to use league average
-
-        total_cards = ref_matches['HY'].sum() + ref_matches['AY'].sum() + ref_matches['HR'].sum() + ref_matches[
-            'AR'].sum()
-        return total_cards / len(ref_matches)
-
-    @staticmethod
     def calculate_sos(df, team_name, last_n=5):
         """
         Calculate Strength of Schedule (Average Opponent ELO in last N matches).
@@ -215,9 +194,20 @@ class FeatureEngineer:
     @staticmethod
     def calculate_deep_dive(df, team_name):
         """
-        Calculate deep dive stats for the current season (from July 2025).
+        Calculate deep dive stats for the current season.
+        Dynamically determines the season start date based on the latest match date in the dataframe.
         """
-        season_start = pd.Timestamp("2025-07-01")
+        if df.empty:
+            return None
+            
+        # Determine the season start based on the latest date in the dataframe
+        # Assuming seasons start in July
+        latest_date = df['Date'].max()
+        if latest_date.month >= 7:
+            season_start = pd.Timestamp(year=latest_date.year, month=7, day=1)
+        else:
+            season_start = pd.Timestamp(year=latest_date.year - 1, month=7, day=1)
+
         # Filter for played matches in current season involving the team
         matches = df[
             ((df['HomeTeam'] == team_name) | (df['AwayTeam'] == team_name)) &
@@ -323,7 +313,7 @@ class FeatureEngineer:
         df['AwayElo'] = away_elos
         return df, elo_dict
 
-    def prepare_features(self, df, home_team, away_team, match_date, division, referee, home_elo=1500, away_elo=1500):
+    def prepare_features(self, df, home_team, away_team, match_date, division, referee, home_elo=1500, away_elo=1500, fetch_weather=True):
         """
         Generate features for a specific matchup using historical data.
         """
@@ -365,16 +355,11 @@ class FeatureEngineer:
         home_cards = self.calculate_card_stats(df, home_team)
         away_cards = self.calculate_card_stats(df, away_team)
 
-        # 8. Referee Harshness
-        ref_harshness = self.calculate_referee_harshness(df, referee)
-        if ref_harshness is None:
-            ref_harshness = self.get_league_avg_card_rate(df)
-
-        # 9. League Context (One-Hot Encoding)
-        leagues = ['E0', 'E1', 'SP1', 'D1', 'I1', 'F1', 'N1', 'P1', 'SC0']
+        # 8. League Context (One-Hot Encoding)
+        leagues = ['E0', 'E1', 'SP1', 'D1', 'I1', 'F1', 'N1', 'P1', 'SC0', 'E2', 'E3', 'SP2', 'D2', 'I2', 'F2', 'B1', 'T1', 'G1', 'SC1', 'CL', 'EL', 'ECL', 'FAC', 'LC', 'DFB', 'CDR', 'CDF', 'CI']
         league_features = [1 if division == l else 0 for l in leagues]
 
-        # 10. Efficiency (Clinicality & Resilience)
+        # 9. Efficiency (Clinicality & Resilience)
         home_shots_ot_c = self.calculate_conceded_shot_stats(df, home_team)
         away_shots_ot_c = self.calculate_conceded_shot_stats(df, away_team)
 
@@ -384,9 +369,19 @@ class FeatureEngineer:
         home_save_ratio = round(1 - (home_conceded / home_shots_ot_c), 3) if home_shots_ot_c > 0 else 0.5
         away_save_ratio = round(1 - (away_conceded / away_shots_ot_c), 3) if away_shots_ot_c > 0 else 0.5
 
-        # 11. Strength of Schedule (SoS)
+        # 10. Strength of Schedule (SoS)
         home_sos = self.calculate_sos(df, home_team)
         away_sos = self.calculate_sos(df, away_team)
+        
+        # 11. Weather
+        if fetch_weather:
+            weather = get_weather_forecast(home_team, match_date)
+            rain_mm = weather['rain_mm']
+            temp_c = weather['temperature_c']
+        else:
+            # Use neutral defaults for historical matches
+            rain_mm = 0.0
+            temp_c = 10.0
 
         base_features = [
             home_form, away_form, home_home_form, away_away_form, h2h_home_wins,
@@ -399,10 +394,10 @@ class FeatureEngineer:
         ]
 
         advanced_features = [
-            ref_harshness,
             home_conversion, away_conversion,
             home_save_ratio, away_save_ratio,
-            home_sos, away_sos
+            home_sos, away_sos,
+            rain_mm, temp_c
         ]
 
         return base_features + advanced_features + league_features

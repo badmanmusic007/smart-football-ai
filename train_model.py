@@ -4,6 +4,7 @@ from src.model import MatchPredictor
 from src.config import settings
 from src.data_loader import FootballDataLoader
 from src.features import FeatureEngineer
+from datetime import datetime, timedelta
 
 def train_real_model():
     print("Fetching real historical data...")
@@ -34,6 +35,9 @@ def train_real_model():
     y_btts = []
     y_corners = []
     y_cards = []
+    
+    # Define the cutoff for fetching historical weather (e.g., 90 days)
+    historical_weather_cutoff = datetime.now() - timedelta(days=90)
 
     for index, row in df.iterrows():
         past_data = df[df['Date'] < row['Date']]
@@ -42,7 +46,16 @@ def train_real_model():
         # Pass the ELO ratings that were valid BEFORE this match was played
         h_elo = row['HomeElo']
         a_elo = row['AwayElo']
-        features = engineer.prepare_features(past_data, row['HomeTeam'], row['AwayTeam'], row['Date'], h_elo, a_elo)
+        div = row['Div']
+        referee = row['Referee']
+        
+        # Check if the match date is too old for the weather API
+        fetch_weather = row['Date'].to_pydatetime() > historical_weather_cutoff
+        
+        features = engineer.prepare_features(
+            past_data, row['HomeTeam'], row['AwayTeam'], row['Date'], div, referee, 
+            h_elo, a_elo, fetch_weather=fetch_weather
+        )
         X_list.append(features)
         
         # Match Result
