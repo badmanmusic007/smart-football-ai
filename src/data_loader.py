@@ -16,6 +16,7 @@ class FootballDataLoader:
     def __init__(self):
         self.data = None
         self.cache_file = settings.DATA_DIR / "match_data_final_v24.csv"
+        self.advanced_stats_file = settings.DATA_DIR / "advanced_stats.csv"
 
     def _download_single_csv(self, url):
         """Helper to download and process a single CSV URL."""
@@ -67,7 +68,7 @@ class FootballDataLoader:
                             break
             
             expected_cols = [
-                'Div', 'Date', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG', 'FTR', 'HTHG', 'HTAG',
+                'Div', 'Date', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG', 'FTR', 'HTHG', 'HTAG', 'Referee', 
                 'B365H', 'B365D', 'B365A', 'B365>2.5', 'B365<2.5', 'B365BTTSY', 'B365BTTSN', 
                 'HS', 'AS', 'HST', 'AST', 'HC', 'AC', 'HY', 'AY', 'HR', 'AR',
                 'AvgH', 'AvgD', 'AvgA', 'MaxH', 'MaxD', 'MaxA'
@@ -77,6 +78,7 @@ class FootballDataLoader:
             for col in expected_cols:
                 if col not in df.columns:
                     if col == 'Div': df[col] = 'Unknown'
+                    elif col == 'Referee': df[col] = 'Unknown'
                     # Use np.nan for missing numerical data so isnull() works correctly
                     elif col in ['FTHG', 'FTAG', 'FTR', 'HTHG', 'HTAG']: df[col] = np.nan
                     # Fill stats/odds with 0.0 to prevent model crashes
@@ -99,6 +101,60 @@ class FootballDataLoader:
         except Exception as e:
             logger.warning(f"Could not load data from {url}: {e}")
             return None
+
+    def merge_advanced_stats(self, main_df):
+        """Merges scraped advanced stats (xG, etc.) into the main dataframe."""
+        if not self.advanced_stats_file.exists():
+            logger.warning("Advanced stats file not found. Skipping merge.")
+            return main_df
+
+        try:
+            adv_df = pd.read_csv(self.advanced_stats_file)
+            
+            # Create a mapping dictionary for O(1) lookup
+            # Key: (Team, Div) -> Stats
+            stats_map = {}
+            for _, row in adv_df.iterrows():
+                key = (row['Team'], row['Div'])
+                stats_map[key] = {
+                    'xG_per90': row.get('xG_per90', 0),
+                    'xGA_per90': row.get('xGA_per90', 0),
+                    'Possession': row.get('Possession', 50)
+                }
+            
+            # Apply to main dataframe
+            # We add columns for Home and Away teams
+            home_xg, home_xga, home_poss = [], [], []
+            away_xg, away_xga, away_poss = [], [], []
+            
+            for _, row in main_df.iterrows():
+                h_key = (row['HomeTeam'], row['Div'])
+                a_key = (row['AwayTeam'], row['Div'])
+                
+                h_stats = stats_map.get(h_key, {'xG_per90': 1.3, 'xGA_per90': 1.3, 'Possession': 50}) # Default values
+                a_stats = stats_map.get(a_key, {'xG_per90': 1.3, 'xGA_per90': 1.3, 'Possession': 50})
+                
+                home_xg.append(h_stats['xG_per90'])
+                home_xga.append(h_stats['xGA_per90'])
+                home_poss.append(h_stats['Possession'])
+                
+                away_xg.append(a_stats['xG_per90'])
+                away_xga.append(a_stats['xGA_per90'])
+                away_poss.append(a_stats['Possession'])
+                
+            main_df['Home_xG'] = home_xg
+            main_df['Home_xGA'] = home_xga
+            main_df['Home_Poss'] = home_poss
+            main_df['Away_xG'] = away_xg
+            main_df['Away_xGA'] = away_xga
+            main_df['Away_Poss'] = away_poss
+            
+            print("Advanced stats merged successfully.")
+            return main_df
+            
+        except Exception as e:
+            logger.error(f"Failed to merge advanced stats: {e}")
+            return main_df
 
     def load_data(self):
         """
@@ -135,6 +191,10 @@ class FootballDataLoader:
             combined_df = pd.concat(all_data, ignore_index=True)
             # Convert Date to datetime
             combined_df['Date'] = pd.to_datetime(combined_df['Date'], dayfirst=True)
+            
+            # Merge Advanced Stats
+            combined_df = self.merge_advanced_stats(combined_df)
+
             self.data = combined_df.sort_values('Date')
             
             # Save to disk cache

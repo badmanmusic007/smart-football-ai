@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="Smart Football AI Predictor",
     description="AI-powered match outcome prediction API",
-    version="0.2.5"
+    version="0.2.6"
 )
 
 # Initialize components
@@ -219,6 +219,48 @@ def get_oracle_prediction(home_xg, away_xg):
         s = f"{h}-{a}"; scores[s] = scores.get(s, 0) + 1
     return max(scores, key=scores.get)
 
+def get_strategic_insights(home, away, home_elo, away_elo, rivalry, features):
+    insights = []
+    
+    # 1. Derby Match
+    if rivalry:
+        insights.append({
+            "icon": "⚔️",
+            "text": f"This is the {rivalry['name']}. Derbies are often tighter and more aggressive. Consider 'Over Cards' or 'Draw' markets."
+        })
+        
+    # 2. ELO Mismatch
+    elo_diff = home_elo - away_elo
+    if elo_diff > 200:
+        insights.append({
+            "icon": "⚖️",
+            "text": f"Huge mismatch detected (+{int(elo_diff)} ELO). The 'Home Win' odds may be too low. Look for value in 'Asian Handicap -1.5'."
+        })
+    elif elo_diff < -200:
+        insights.append({
+            "icon": "⚖️",
+            "text": f"Huge mismatch detected ({int(elo_diff)} ELO). The 'Away Win' is highly likely. Consider 'Away Team to Score in Both Halves'."
+        })
+        
+    # 3. Goal Drought
+    avg_goals = (features[5] + features[6]) / 2 # Avg goals scored by both
+    if avg_goals < 1.0:
+        insights.append({
+            "icon": "🌵",
+            "text": "Both teams have low scoring averages. This could be a tactical gridlock. 'Under 2.5 Goals' is a strong candidate."
+        })
+        
+    # 4. Fortress vs Traveler
+    home_home_form = features[2]
+    away_away_form = features[3]
+    if home_home_form >= 10 and away_away_form <= 3:
+        insights.append({
+            "icon": "🏰",
+            "text": f"{home} is a fortress at home, while {away} struggles on the road. This amplifies the home advantage."
+        })
+
+    return insights
+
 def sanitize_payload(data):
     if isinstance(data, dict): return {k: sanitize_payload(v) for k, v in data.items()}
     if isinstance(data, (list, tuple)): return [sanitize_payload(v) for v in data]
@@ -248,6 +290,52 @@ async def get_available_teams():
     df = data_loader.load_data()
     if df.empty: raise HTTPException(503, "Failed to load data.")
     return {"teams": sorted(list(set(df['HomeTeam'].unique()) | set(df['AwayTeam'].unique())))}
+
+@app.get("/elo-history")
+async def get_elo_history(home: str, away: str):
+    df = data_loader.load_data()
+    if df.empty: raise HTTPException(503, "Failed to load data.")
+    
+    # Ensure ELO is calculated
+    df, _ = feature_engineer.enrich_with_elo(df)
+    
+    def get_team_elo(team_name):
+        mask = ((df['HomeTeam'] == team_name) | (df['AwayTeam'] == team_name)) & df['FTR'].notna()
+        matches = df[mask].tail(20) # Last 20 games
+        history = []
+        for _, row in matches.iterrows():
+            elo = row['HomeElo'] if row['HomeTeam'] == team_name else row['AwayElo']
+            history.append({"date": row['Date'].strftime("%d/%m"), "elo": int(elo)})
+        return history
+
+    return {
+        "home": get_team_elo(home),
+        "away": get_team_elo(away)
+    }
+
+@app.get("/goal-form")
+async def get_goal_form(home: str, away: str):
+    df = data_loader.load_data()
+    if df.empty: raise HTTPException(503, "Failed to load data.")
+    
+    def get_team_goals(team_name):
+        mask = ((df['HomeTeam'] == team_name) | (df['AwayTeam'] == team_name)) & df['FTR'].notna()
+        matches = df[mask].tail(5) # Last 5 games
+        history = []
+        for _, row in matches.iterrows():
+            if row['HomeTeam'] == team_name:
+                scored, conceded = row['FTHG'], row['FTAG']
+                opponent = row['AwayTeam']
+            else:
+                scored, conceded = row['FTAG'], row['FTHG']
+                opponent = row['HomeTeam']
+            history.append({"opponent": opponent, "scored": int(scored), "conceded": int(conceded)})
+        return history
+
+    return {
+        "home": get_team_goals(home),
+        "away": get_team_goals(away)
+    }
 
 @app.get("/predict")
 async def predict_api(home: str, away: str):
@@ -306,20 +394,20 @@ async def predict_api(home: str, away: str):
     
     # Referee Factor
     ref_badge = None
-    ref_harshness = features[21] # Index of referee_harshness
-    if ref_harshness > 4.5:
-        ref_badge = {"text": "👮‍♂️ Strict Ref", "color": "#ef4444"}
+    # ref_harshness = features[21] # Removed as per request
     
     # Trend Spotter
     home_streaks = get_streaks(df, home)
     away_streaks = get_streaks(df, away)
     
-    if ref_badge:
-        home_streaks.append(ref_badge) # Add ref badge to home for display
+    # Strategic Insights
+    rivalry = get_rivalry_info(home, away)
+    strategic_insights = get_strategic_insights(home, away, home_elo, away_elo, rivalry, features)
 
     return sanitize_payload({
         "home_win": round(pred["home_win_prob"] * 100, 1), "draw": round(pred["draw_prob"] * 100, 1), "away_win": round(pred["away_win_prob"] * 100, 1),
-        "rivalry": get_rivalry_info(home, away),
+        "rivalry": rivalry,
+        "strategic_insights": strategic_insights,
         "features_used": {
             "home_form_score": features[0], "away_form_score": features[1],
             "home_home_form": features[2], "away_away_form": features[3],
