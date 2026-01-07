@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Smart Football AI</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
             --bg-color: #0f172a;
@@ -274,6 +275,22 @@
         }
         .insight-item:last-child { margin-bottom: 0; }
         .insight-icon { font-size: 1.2em; margin-right: 12px; }
+
+        /* Charts */
+        .chart-container {
+            position: relative;
+            height: 250px;
+            width: 100%;
+            margin-top: 15px;
+        }
+
+        /* Performance Metrics */
+        .perf-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 15px; }
+        .perf-box { background: rgba(255,255,255,0.03); border: 1px solid var(--border); padding: 15px; border-radius: 12px; text-align: center; }
+        .perf-val { font-size: 1.5em; font-weight: bold; color: var(--text-main); }
+        .perf-lbl { font-size: 0.8em; color: var(--text-muted); text-transform: uppercase; margin-top: 5px; }
+        .profit-pos { color: var(--success); }
+        .profit-neg { color: var(--danger); }
     </style>
 </head>
 <body>
@@ -293,9 +310,13 @@
             <div class="tabs">
                 <button class="tab-link active" onclick="openTab(event, 'singleMatches')">Single Matches</button>
                 <button class="tab-link" onclick="openTab(event, 'goldenTickets')">Golden Tickets</button>
+                <button class="tab-link" onclick="openTab(event, 'performance')">Performance</button>
             </div>
             <div id="singleMatches" class="tab-content" style="display: block;"></div>
             <div id="goldenTickets" class="tab-content" style="display: none;"></div>
+            <div id="performance" class="tab-content" style="display: none;">
+                <div id="perfMetrics">Loading...</div>
+            </div>
         </div>
 
         <div id="result"></div>
@@ -332,6 +353,7 @@
                 dataList.innerHTML = options;
                 window.allTeams = teams;
                 loadUserHistory();
+                loadPerformance();
             });
 
         function swapTeams() {
@@ -516,6 +538,42 @@
                 // Note: Full implementation would mirror the single match logic above
             } else {
                 ticketList.innerHTML = `<p style="color: var(--text-muted); font-style: italic;">No Golden Tickets generated in the last 24 hours.</p>`;
+            }
+        }
+
+        async function loadPerformance() {
+            try {
+                const response = await fetch('/performance');
+                const data = await response.json();
+
+                const profitClass = data.total_profit >= 0 ? 'profit-pos' : 'profit-neg';
+                const profitSign = data.total_profit >= 0 ? '+' : '';
+
+                document.getElementById('perfMetrics').innerHTML = `
+                    <div class="perf-grid">
+                        <div class="perf-box">
+                            <div class="perf-val">${data.win_rate}%</div>
+                            <div class="perf-lbl">Win Rate</div>
+                        </div>
+                        <div class="perf-box">
+                            <div class="perf-val ${profitClass}">${profitSign}$${data.total_profit}</div>
+                            <div class="perf-lbl">Total Profit</div>
+                        </div>
+                        <div class="perf-box">
+                            <div class="perf-val">${data.roi}%</div>
+                            <div class="perf-lbl">ROI</div>
+                        </div>
+                        <div class="perf-box">
+                            <div class="perf-val">${data.total_bets}</div>
+                            <div class="perf-lbl">Total Bets</div>
+                        </div>
+                    </div>
+                    <div style="margin-top:15px; font-size:0.8em; color:var(--text-muted);">
+                        Based on automated tracking of value bets.
+                    </div>
+                `;
+            } catch (e) {
+                console.error("Failed to load performance:", e);
             }
         }
 
@@ -786,6 +844,53 @@
                             </div>`;
                 };
 
+                // --- Visualizer: Fetch and Render Charts ---
+                const eloResponse = await fetch(`/elo-history?home=${encodeURIComponent(home)}&away=${encodeURIComponent(away)}`);
+                const eloData = await eloResponse.json();
+
+                const goalResponse = await fetch(`/goal-form?home=${encodeURIComponent(home)}&away=${encodeURIComponent(away)}`);
+                const goalData = await goalResponse.json();
+
+                // Wait for DOM update before rendering charts
+                setTimeout(() => {
+                    // Render ELO Chart
+                    const eloCanvas = document.getElementById('eloChart');
+                    if (eloCanvas) {
+                        const eloCtx = eloCanvas.getContext('2d');
+                        if (window.eloChartInstance) window.eloChartInstance.destroy();
+                        window.eloChartInstance = new Chart(eloCtx, {
+                            type: 'line',
+                            data: {
+                                labels: eloData.home.map(d => d.date),
+                                datasets: [
+                                    { label: home, data: eloData.home.map(d => d.elo), borderColor: '#3b82f6', tension: 0.4 },
+                                    { label: away, data: eloData.away.map(d => d.elo), borderColor: '#ef4444', tension: 0.4 }
+                                ]
+                            },
+                            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#94a3b8' } } }, scales: { y: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' } }, x: { ticks: { color: '#94a3b8' }, grid: { display: false } } } }
+                        });
+                    }
+
+                    // Render Goal Form Chart
+                    const goalCanvas = document.getElementById('goalChart');
+                    if (goalCanvas) {
+                        const goalCtx = goalCanvas.getContext('2d');
+                        if (window.goalChartInstance) window.goalChartInstance.destroy();
+                        window.goalChartInstance = new Chart(goalCtx, {
+                            type: 'bar',
+                            data: {
+                                labels: goalData.home.map(d => d.opponent),
+                                datasets: [
+                                    { label: `${home} Scored`, data: goalData.home.map(d => d.scored), backgroundColor: '#3b82f6' },
+                                    { label: `${home} Conceded`, data: goalData.home.map(d => d.conceded), backgroundColor: '#1e293b', borderColor: '#3b82f6', borderWidth: 1 }
+                                ]
+                            },
+                            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#94a3b8' } } }, scales: { y: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' } }, x: { ticks: { color: '#94a3b8' }, grid: { display: false } } } }
+                        });
+                    }
+                }, 100); // Small delay to ensure DOM is ready
+
+
             resultDiv.innerHTML = `
                 <div class="animate-in">
                     ${rivalryHTML}
@@ -824,6 +929,20 @@
                             <div class="comp-row"><div class="comp-val home">${data.features_used.home_corners}</div><div class="comp-lbl">Avg Corners</div><div class="comp-val away">${data.features_used.away_corners}</div></div>
                             <div class="comp-row"><div class="comp-val home">${data.features_used.home_cards}</div><div class="comp-lbl">Avg Cards</div><div class="comp-val away">${data.features_used.away_cards}</div></div>
                             <div class="comp-row"><div class="comp-val home">${data.features_used.home_rest_days}d</div><div class="comp-lbl">Rest Days</div><div class="comp-val away">${data.features_used.away_rest_days}d</div></div>
+                        </div>
+                    </div>
+
+                    <button class="collapsible" onclick="toggleCollapsible(this)">📈 ELO History Chart</button>
+                    <div class="content">
+                        <div class="chart-container">
+                            <canvas id="eloChart"></canvas>
+                        </div>
+                    </div>
+
+                    <button class="collapsible" onclick="toggleCollapsible(this)">⚽ Goal Form Chart</button>
+                    <div class="content">
+                        <div class="chart-container">
+                            <canvas id="goalChart"></canvas>
                         </div>
                     </div>
 
